@@ -29,11 +29,7 @@ model = None
 @app.on_event("startup")
 def load_model():
     global model
-    model = WhisperModel(
-        "small",
-        device="cpu",
-        compute_type="int8"
-    )
+    model = WhisperModel("base", device="cpu", compute_type="int8")
 
 
 @app.get("/")
