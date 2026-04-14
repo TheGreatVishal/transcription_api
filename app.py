@@ -1,5 +1,7 @@
 import os
 import uuid
+import time
+import shutil
 
 BASE_CACHE = "/tmp/hf_cache"
 
@@ -8,43 +10,53 @@ os.environ["HUGGINGFACE_HUB_CACHE"] = BASE_CACHE
 os.environ["TRANSFORMERS_CACHE"] = BASE_CACHE
 os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
 
-
 from fastapi import FastAPI, UploadFile, File
 from faster_whisper import WhisperModel
-import shutil
-import time
 from huggingface_hub import login
 
-# ✅ Safe login
+# ✅ HF login
 HF_TOKEN = os.getenv("HF_TOKEN")
 if HF_TOKEN:
     login(HF_TOKEN)
 
-# ✅ Single clean app
 app = FastAPI()
-
 model = None
 
-# 🚀 LOAD MODEL ON STARTUP
+# 🚀 LOAD MODEL
 @app.on_event("startup")
 def load_model():
     global model
-    model = WhisperModel("base", device="cpu", compute_type="int8")
+    print("🚀 Loading Whisper model...")
+    model = WhisperModel(
+        "base",   # ✅ safe for Render
+        device="cpu",
+        compute_type="int8"
+    )
+    print("✅ Whisper model ready")
 
 
 @app.get("/")
 def home():
     return {"status": "Whisper API running"}
 
+
 @app.get("/ping")
 def ping():
     return {"msg": "pong"}
 
+
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
     start_time = time.time()
+    file_path = None
 
     try:
+        print("\n================= NEW REQUEST =================")
+
+        # 📁 FILE INFO
+        print(f"📁 Filename: {file.filename}")
+        print(f"📄 Content Type: {file.content_type}")
+
         # 💾 SAVE FILE
         file_path = f"temp_{uuid.uuid4()}.wav"
 
@@ -52,37 +64,42 @@ async def transcribe(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         file_size = os.path.getsize(file_path)
+        print(f"📏 File Size: {file_size / 1024:.2f} KB")
+        print(f"⏱️ File saved at: {file_path}")
 
+        print("🚀 Starting transcription...")
 
-        # 🔥 STEP 1: AUTO DETECTION
+        # 🔥 SINGLE PASS (NO DOUBLE PROCESSING)
         segments, info = model.transcribe(
             file_path,
             beam_size=1,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500)
+            vad_parameters=dict(min_silence_duration_ms=500),
+            language="hi"  # 🔥 force Hindi (remove if mixed content)
         )
 
-        # 🔥 STEP 2: FALLBACK TO HINDI IF LOW CONFIDENCE
-        if info.language_probability < 0.6:
-            segments, info = model.transcribe(
-                file_path,
-                language="hi"
-            )
+        print(f"🎧 Language Used: {info.language}")
 
         # 🧠 BUILD TEXT
+        print("\n--- SEGMENTS ---")
         texts = []
+
         for i, segment in enumerate(segments):
+            print(f"[{i}] {segment.start:.2f}s → {segment.end:.2f}s : {segment.text}")
             texts.append(segment.text)
 
         final_text = " ".join(texts).strip()
 
-        # 🛑 HANDLE EMPTY AUDIO
         if not final_text:
             final_text = "No speech detected"
 
-        # ⏱️ TIME
+        print("\n🧠 FINAL TRANSCRIPTION:")
+        print(final_text)
+
         total_time = time.time() - start_time
-    
+        print(f"⏱️ Total Processing Time: {total_time:.2f} sec")
+        print("=============================================\n")
+
         return {
             "success": True,
             "text": final_text,
@@ -90,11 +107,16 @@ async def transcribe(file: UploadFile = File(...)):
         }
 
     except Exception as e:
+        print("\n❌ ERROR OCCURRED")
+        print(str(e))
+        print("=============================================\n")
+
         return {
             "success": False,
             "error": str(e)
         }
-        
+
     finally:
-        if os.path.exists(file_path):
+        if file_path and os.path.exists(file_path):
             os.remove(file_path)
+            print("🗑️ Temp file deleted")
