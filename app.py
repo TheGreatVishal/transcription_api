@@ -14,7 +14,7 @@ from faster_whisper import WhisperModel
 import shutil
 import time
 
-app = FastAPI()
+app = FastAPI(root_path="")
 
 model = None
 
@@ -33,6 +33,9 @@ def load_model():
 def home():
     return {"status": "Whisper API running"}
 
+@app.get("/ping")
+def ping():
+    return {"msg": "pong"}
 
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)):
@@ -73,11 +76,6 @@ async def transcribe(file: UploadFile = File(...)):
         # 🛑 HANDLE EMPTY AUDIO
         if not final_text:
             final_text = "No speech detected"
-
-        # 🗑️ CLEANUP
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            print("🗑️ Temp file deleted")
 
         # ⏱️ TIME
         total_time = time.time() - start_time
