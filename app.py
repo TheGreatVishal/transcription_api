@@ -28,7 +28,7 @@ def load_model():
     global model
     print("🚀 Loading Whisper model...")
     model = WhisperModel(
-        "base",   # ✅ safe for Render
+        "tiny",   # ⚡ fast + stable
         device="cpu",
         compute_type="int8"
     )
@@ -63,22 +63,24 @@ async def transcribe(file: UploadFile = File(...)):
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        file_size = os.path.getsize(file_path)
-        print(f"📏 File Size: {file_size / 1024:.2f} KB")
         print(f"⏱️ File saved at: {file_path}")
-
         print("🚀 Starting transcription...")
 
-        # 🔥 SINGLE PASS (NO DOUBLE PROCESSING)
+        # 🔥 SINGLE PASS TRANSCRIPTION (FAST)
         segments, info = model.transcribe(
             file_path,
             beam_size=1,
             vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            language="hi"  # 🔥 force Hindi (remove if mixed content)
+            vad_parameters=dict(min_silence_duration_ms=500)
         )
 
-        print(f"🎧 Language Used: {info.language}")
+        detected_lang = info.language
+        print(f"🎧 Detected Language: {detected_lang}")
+
+        if detected_lang == "hi":
+            print("🇮🇳 Hindi detected")
+        else:
+            print("🌍 Non-Hindi detected")
 
         # 🧠 BUILD TEXT
         print("\n--- SEGMENTS ---")
@@ -103,7 +105,7 @@ async def transcribe(file: UploadFile = File(...)):
         return {
             "success": True,
             "text": final_text,
-            "language": info.language
+            "language": detected_lang
         }
 
     except Exception as e:
