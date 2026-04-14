@@ -13,8 +13,15 @@ from fastapi import FastAPI, UploadFile, File
 from faster_whisper import WhisperModel
 import shutil
 import time
+from huggingface_hub import login
 
-app = FastAPI(root_path="")
+# ✅ Safe login
+HF_TOKEN = os.getenv("HF_TOKEN")
+if HF_TOKEN:
+    login(HF_TOKEN)
+
+# ✅ Single clean app
+app = FastAPI()
 
 model = None
 
